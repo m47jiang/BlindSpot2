@@ -75,6 +75,8 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     // permission request codes need to be < 256
     private static final int RC_HANDLE_CAMERA_PERM = 2;
 
+    public static boolean flag_azure_done = false;
+
     //==============================================================================================
     // Activity Methods
     //==============================================================================================
@@ -154,33 +156,46 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     /**
      * Sends a file to Azure Storage
      */
-    void sendPhotoToAzure(File file) {
-        try
-        {
-            String storageConnectionString =
-                        "DefaultEndpointsProtocol=http;" +
+    void sendPhotoToAzure(final File file) {
+        final String storageConnectionString =
+                "DefaultEndpointsProtocol=http;" +
                         "AccountName=blindspot;" +
                         "AccountKey=D5xPtr7nFwZNqPzGZ96g29mQBPc4AqCcoVGarrsiWUPiYK9um8fJ3a2eVFHlpXu1Q1NZMdF4yasR+AIiRca7og==";
-            // Retrieve storage account from connection-string.
-            CloudStorageAccount storageAccount = CloudStorageAccount.parse(storageConnectionString);
 
-            // Create the blob client.
-            CloudBlobClient blobClient = storageAccount.createCloudBlobClient();
 
-            // Retrieve reference to a previously created container.
-            CloudBlobContainer container = blobClient.getContainerReference("image");
+        Thread thread = new Thread() {
+            @Override
+            public void run() {
+                try
+                {
+                    // Retrieve storage account from connection-string.
+                    CloudStorageAccount storageAccount = CloudStorageAccount.parse(storageConnectionString);
 
-            // Define the path to a local file.
+                    // Create the blob client.
+                    CloudBlobClient blobClient = storageAccount.createCloudBlobClient();
 
-            // Create or overwrite the "myimage.jpg" blob with contents from a local file.
-            CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
-            blob.upload(new FileInputStream(file), file.length());
-        }
-        catch (Exception e)
-        {
-            // Output the stack trace.
-            e.printStackTrace();
-        }
+                    // Retrieve reference to a previously created container.
+                    CloudBlobContainer container = blobClient.getContainerReference("image");
+
+                    // Define the path to a local file.
+
+                    // Create or overwrite the "myimage.jpg" blob with contents from a local file.
+                    CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
+                    blob.upload(new FileInputStream(file), file.length());
+                    flag_azure_done = true;
+                    Log.e("InsideThreadAzure", " Sending picture");
+                }
+                catch (Exception e)
+                {
+                    // Output the stack trace.
+                    e.printStackTrace();
+                }
+            }
+        };
+        thread.start();
+        while(!flag_azure_done) {}
+        Log.e("OutsideThreadAzure", " Sent picture");
+        flag_azure_done = false;
     }
 
     /**
