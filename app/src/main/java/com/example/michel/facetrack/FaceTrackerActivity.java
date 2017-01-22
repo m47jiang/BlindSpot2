@@ -128,13 +128,14 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                     @Override
                     public void onPictureTaken(byte[] bytes) {
                         String file_timestamp = Long.toString(System.currentTimeMillis());
+                        Log.e("File: " , Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg");
                         final File file = new File(Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg");
                         try {
                             save(bytes, file);
 
                             String toSpeak = "Image saved";
                             mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
-                            Toast.makeText(FaceTrackerActivity.this, "Saved to pic.jpg", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -151,9 +152,11 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                             }
                         }
                         sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                        String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+                        Log.e("Photo_url : ", photo_url);
+                        Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
+                        Log.e("Happiness: ", Float.toString(happiness));
                     }
-
-//                  Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
                 });
             }
         });
@@ -167,7 +170,6 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 "DefaultEndpointsProtocol=http;" +
                         "AccountName=blindspot;" +
                         "AccountKey=D5xPtr7nFwZNqPzGZ96g29mQBPc4AqCcoVGarrsiWUPiYK9um8fJ3a2eVFHlpXu1Q1NZMdF4yasR+AIiRca7og==";
-
 
         Thread thread = new Thread() {
             @Override
