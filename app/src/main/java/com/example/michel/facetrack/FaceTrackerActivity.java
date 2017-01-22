@@ -168,12 +168,12 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             CloudBlobClient blobClient = storageAccount.createCloudBlobClient();
 
             // Retrieve reference to a previously created container.
-            CloudBlobContainer container = blobClient.getContainerReference("mycontainer");
+            CloudBlobContainer container = blobClient.getContainerReference("image");
 
             // Define the path to a local file.
 
             // Create or overwrite the "myimage.jpg" blob with contents from a local file.
-            CloudBlockBlob blob = container.getBlockBlobReference("myimage.jpg");
+            CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
             blob.upload(new FileInputStream(file), file.length());
         }
         catch (Exception e)
