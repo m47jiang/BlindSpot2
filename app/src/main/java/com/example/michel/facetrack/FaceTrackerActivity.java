@@ -42,10 +42,16 @@ import com.google.android.gms.vision.face.Face;
 import com.google.android.gms.vision.face.FaceDetector;
 import com.example.michel.facetrack.camera.CameraSourcePreview;
 import com.example.michel.facetrack.camera.GraphicOverlay;
+import com.example.michel.facetrack.SentimentalAnalysis;
+import com.microsoft.azure.storage.CloudStorageAccount;
+import com.microsoft.azure.storage.blob.CloudBlobClient;
+import com.microsoft.azure.storage.blob.CloudBlobContainer;
+import com.microsoft.azure.storage.blob.CloudBlockBlob;
 
 import org.w3c.dom.Text;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -113,8 +119,8 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 }, new CameraSource.PictureCallback() {
                     @Override
                     public void onPictureTaken(byte[] bytes) {
-
-                        final File file = new File(Environment.getExternalStorageDirectory()+"/pic.jpg");
+                        String file_timestamp = Long.toString(System.currentTimeMillis());
+                        final File file = new File(Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg");
                         try {
                             save(bytes, file);
 
@@ -136,10 +142,45 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                                 output.close();
                             }
                         }
+                        sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
                     }
+
+//                  Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
                 });
             }
         });
+    }
+
+    /**
+     * Sends a file to Azure Storage
+     */
+    void sendPhotoToAzure(File file) {
+        try
+        {
+            String storageConnectionString =
+                        "DefaultEndpointsProtocol=http;" +
+                        "AccountName=blindspot;" +
+                        "AccountKey=09f21256-5e75-4b8f-8f8c-ded4665bde79";
+            // Retrieve storage account from connection-string.
+            CloudStorageAccount storageAccount = CloudStorageAccount.parse(storageConnectionString);
+
+            // Create the blob client.
+            CloudBlobClient blobClient = storageAccount.createCloudBlobClient();
+
+            // Retrieve reference to a previously created container.
+            CloudBlobContainer container = blobClient.getContainerReference("mycontainer");
+
+            // Define the path to a local file.
+
+            // Create or overwrite the "myimage.jpg" blob with contents from a local file.
+            CloudBlockBlob blob = container.getBlockBlobReference("myimage.jpg");
+            blob.upload(new FileInputStream(file), file.length());
+        }
+        catch (Exception e)
+        {
+            // Output the stack trace.
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -315,6 +356,23 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 mCameraSource.release();
                 mCameraSource = null;
             }
+        }
+    }
+
+    /**
+     * Returns a happiness level of a picture url
+     *
+     */
+    private Float getHappiness(String photo_url) {
+        SentimentalAnalysis sent = new SentimentalAnalysis();
+        try {
+            //"https://blindspot.blob.core.windows.net/image/123.jpg"
+            Float result_happiness = sent.post(photo_url);
+            System.out.println(result_happiness);
+            return result_happiness;
+        } catch (IOException e) {
+            System.out.println("CRASH");
+            return 0.0f;
         }
     }
 
