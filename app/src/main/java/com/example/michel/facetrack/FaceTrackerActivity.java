@@ -50,6 +50,7 @@ import com.example.michel.facetrack.camera.GraphicOverlay;
 import com.example.michel.facetrack.SentimentalAnalysis;
 import com.google.android.gms.vision.face.Landmark;
 import com.microsoft.azure.storage.CloudStorageAccount;
+import com.microsoft.azure.storage.blob.BlobProperties;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlobContainer;
 import com.microsoft.azure.storage.blob.CloudBlockBlob;
@@ -85,6 +86,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     private final int SPEECH_RECOGNITION_CODE = 1;
 
     public static boolean flag_azure_done = false;
+    public static boolean flag_comm_azure_and_api = false;
 
     public long lastFaceTime;
 
@@ -156,10 +158,10 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                                 output.close();
                             }
                         }
-                        sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                        Float happiness = sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
                         String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
                         Log.e("Photo_url : ", photo_url);
-                        Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
+//                        Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
                         Log.e("Happiness: ", Float.toString(happiness));
                     }
                 });
@@ -188,11 +190,11 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     /**
      * Sends a file to Azure Storage
      */
-    void sendPhotoToAzure(final File file) {
+    Float sendPhotoToAzure(final File file) {
         final String storageConnectionString =
-                "DefaultEndpointsProtocol=http;" +
+                "DefaultEndpointsProtocol=https;" +
                         "AccountName=blindspot;" +
-                        "AccountKey=D5xPtr7nFwZNqPzGZ96g29mQBPc4AqCcoVGarrsiWUPiYK9um8fJ3a2eVFHlpXu1Q1NZMdF4yasR+AIiRca7og==";
+                        "AccountKey=D5xPtr7nFwZNqPzGZ96g29mQBPc4AqCcoVGarrsiWUPiYK9um8fJ3a2eVFHlpXu1Q1NZMdF4yasR+AIiRca7og==;";
 
         Thread thread = new Thread() {
             @Override
@@ -212,6 +214,9 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
                     // Create or overwrite the "myimage.jpg" blob with contents from a local file.
                     CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
+//                    BlobProperties myProperties = blob.getProperties();
+//                    myProperties.setContentMD5("-");
+//                    blob.uploadProperties();
                     blob.upload(new FileInputStream(file), file.length());
                     flag_azure_done = true;
                     Log.e("InsideThreadAzure", " Sending picture");
@@ -224,9 +229,53 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             }
         };
         thread.start();
-        while(!flag_azure_done) {}
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+//        while(!flag_azure_done) {
+//            try {
+//                thread.sleep(1000);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        }
         Log.e("OutsideThreadAzure", " Sent picture");
-        flag_azure_done = false;
+
+        SentimentalAnalysis sent = new SentimentalAnalysis();
+        try {
+            //"https://blindspot.blob.core.windows.net/image/123.jpg"
+//            Float result_happiness = sent.post("https://blindspot.blob.core.windows.net/image/1485075198236.jpg");
+            String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+            Log.e("Photo_url : ", photo_url);
+            Float result_happiness = sent.post(photo_url);
+            System.out.println(result_happiness);
+            return result_happiness;
+        } catch (IOException e) {
+            System.out.println("CRASH");
+            return 0.0f;
+        }
+    }
+
+    /**
+     * Returns a happiness level of a picture url
+     *
+     */
+    private Float getHappiness(String photo_url) {
+        SentimentalAnalysis sent = new SentimentalAnalysis();
+        try {
+            //"https://blindspot.blob.core.windows.net/image/123.jpg"
+            Float result_happiness = sent.post("https://blindspot.blob.core.windows.net/image/1485075198236.jpg");
+            System.out.println(result_happiness);
+            return result_happiness;
+        } catch (IOException e) {
+            System.out.println("CRASH");
+            return 0.0f;
+        } finally {
+            flag_comm_azure_and_api = false;
+        }
     }
 
     /**
@@ -403,23 +452,6 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 mCameraSource.release();
                 mCameraSource = null;
             }
-        }
-    }
-
-    /**
-     * Returns a happiness level of a picture url
-     *
-     */
-    private Float getHappiness(String photo_url) {
-        SentimentalAnalysis sent = new SentimentalAnalysis();
-        try {
-            photo_url = "https://blindspot.blob.core.windows.net/image/123.jpg";
-            Float result_happiness = sent.post(photo_url);
-            System.out.println(result_happiness);
-            return result_happiness;
-        } catch (IOException e) {
-            System.out.println("CRASH");
-            return 0.0f;
         }
     }
 
