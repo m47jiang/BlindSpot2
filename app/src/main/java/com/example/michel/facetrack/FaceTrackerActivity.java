@@ -24,6 +24,7 @@ import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.speech.tts.TextToSpeech;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -42,10 +43,13 @@ import com.google.android.gms.vision.face.FaceDetector;
 import com.example.michel.facetrack.camera.CameraSourcePreview;
 import com.example.michel.facetrack.camera.GraphicOverlay;
 
+import org.w3c.dom.Text;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Locale;
 
 /**
  * Activity for the face tracker app.  This app detects faces with the rear facing camera, and draws
@@ -58,6 +62,8 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
     private CameraSourcePreview mPreview;
     private GraphicOverlay mGraphicOverlay;
+
+    TextToSpeech mTTS;
 
     private static final int RC_HANDLE_GMS = 9001;
     // permission request codes need to be < 256
@@ -87,6 +93,15 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             requestCameraPermission();
         }
 
+        mTTS=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if(status != TextToSpeech.ERROR) {
+                    mTTS.setLanguage(Locale.CANADA);
+                }
+            }
+        });
+
         mPreview.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -102,6 +117,9 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                         final File file = new File(Environment.getExternalStorageDirectory()+"/pic.jpg");
                         try {
                             save(bytes, file);
+
+                            String toSpeak = "Image saved";
+                            mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
                             Toast.makeText(FaceTrackerActivity.this, "Saved to pic.jpg", Toast.LENGTH_SHORT).show();
                         } catch (IOException e) {
                             e.printStackTrace();
