@@ -23,11 +23,14 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
+import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
@@ -39,7 +42,10 @@ import com.google.android.gms.vision.face.FaceDetector;
 import com.example.michel.facetrack.camera.CameraSourcePreview;
 import com.example.michel.facetrack.camera.GraphicOverlay;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 
 /**
  * Activity for the face tracker app.  This app detects faces with the rear facing camera, and draws
@@ -80,6 +86,42 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         } else {
             requestCameraPermission();
         }
+
+        mPreview.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mCameraSource.takePicture(new CameraSource.ShutterCallback() {
+                    @Override
+                    public void onShutter() {
+
+                    }
+                }, new CameraSource.PictureCallback() {
+                    @Override
+                    public void onPictureTaken(byte[] bytes) {
+
+                        final File file = new File(Environment.getExternalStorageDirectory()+"/pic.jpg");
+                        try {
+                            save(bytes, file);
+                            Toast.makeText(FaceTrackerActivity.this, "Saved to pic.jpg", Toast.LENGTH_SHORT).show();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+
+                    private void save(byte[] bytes, final File file) throws IOException {
+                        OutputStream output = null;
+                        try {
+                            output = new FileOutputStream(file);
+                            output.write(bytes);
+                        } finally {
+                            if (null != output) {
+                                output.close();
+                            }
+                        }
+                    }
+                });
+            }
+        });
     }
 
     /**
