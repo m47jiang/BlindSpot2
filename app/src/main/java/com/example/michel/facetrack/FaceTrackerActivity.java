@@ -123,7 +123,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             }
         });
 
-        mPreview.setOnClickListener(new View.OnClickListener() {
+        /*mPreview.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 mCameraSource.takePicture(new CameraSource.ShutterCallback() {
@@ -166,7 +166,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                     }
                 });
             }
-        });
+        });*/
 
         lastFaceTime = System.currentTimeMillis();
 
@@ -646,6 +646,42 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
                 } else if (response.equals("good")) {
                     state = State.REQUEST_COMMENT;
+                    mCameraSource.takePicture(new CameraSource.ShutterCallback() {
+                        @Override
+                        public void onShutter() {
+
+                        }
+                    }, new CameraSource.PictureCallback() {
+                        @Override
+                        public void onPictureTaken(byte[] bytes) {
+                            String file_timestamp = Long.toString(System.currentTimeMillis());
+                            Log.e("File: ", Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            final File file = new File(Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            try {
+                                save(bytes, file);
+                                Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+
+                        private void save(byte[] bytes, final File file) throws IOException {
+                            OutputStream output = null;
+                            try {
+                                output = new FileOutputStream(file);
+                                output.write(bytes);
+                            } finally {
+                                if (null != output) {
+                                    output.close();
+                                }
+                            }
+                            sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                            String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+                            Log.e("Photo_url : ", photo_url);
+                            Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
+                            Log.e("Happiness: ", Float.toString(happiness));
+                        }
+                    });
                     toSpeak = "Picture taken. Do you want to add a comment?";
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
                 }
@@ -665,6 +701,42 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 } else if (response.equals("good")) {
                     state = State.REQUEST_COMMENT;
                     toSpeak = "Picture taken. Do you want to add a comment?";
+                    mCameraSource.takePicture(new CameraSource.ShutterCallback() {
+                        @Override
+                        public void onShutter() {
+
+                        }
+                    }, new CameraSource.PictureCallback() {
+                        @Override
+                        public void onPictureTaken(byte[] bytes) {
+                            String file_timestamp = Long.toString(System.currentTimeMillis());
+                            Log.e("File: ", Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            final File file = new File(Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            try {
+                                save(bytes, file);
+                                Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+
+                        private void save(byte[] bytes, final File file) throws IOException {
+                            OutputStream output = null;
+                            try {
+                                output = new FileOutputStream(file);
+                                output.write(bytes);
+                            } finally {
+                                if (null != output) {
+                                    output.close();
+                                }
+                            }
+                            sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                            String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+                            Log.e("Photo_url : ", photo_url);
+                            Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
+                            Log.e("Happiness: ", Float.toString(happiness));
+                        }
+                    });
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
                 }
             case REQUEST_COMMENT:
