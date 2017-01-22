@@ -24,10 +24,12 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.PointF;
 import android.os.Bundle;
 import android.os.Environment;
 import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -46,6 +48,7 @@ import com.google.android.gms.vision.face.FaceDetector;
 import com.example.michel.facetrack.camera.CameraSourcePreview;
 import com.example.michel.facetrack.camera.GraphicOverlay;
 import com.example.michel.facetrack.SentimentalAnalysis;
+import com.google.android.gms.vision.face.Landmark;
 import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlobContainer;
@@ -82,6 +85,8 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     private final int SPEECH_RECOGNITION_CODE = 1;
 
     public static boolean flag_azure_done = false;
+
+    public long lastFaceTime;
 
     //==============================================================================================
     // Activity Methods
@@ -128,14 +133,14 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                     @Override
                     public void onPictureTaken(byte[] bytes) {
                         String file_timestamp = Long.toString(System.currentTimeMillis());
-                        Log.e("File: " , Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg");
-                        final File file = new File(Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg");
+                        Log.e("File: ", Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                        final File file = new File(Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
                         try {
                             save(bytes, file);
 
                             String toSpeak = "Image saved";
                             mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
-                            Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -160,7 +165,25 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 });
             }
         });
-        startSpeechToText();
+
+        lastFaceTime = System.currentTimeMillis();
+
+        String toSpeak = "Blind spot opened.";
+        mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+        mTTS.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            @Override
+            public void onStart(String utteranceId) {
+            }
+
+            @Override
+            public void onDone(String utteranceId) {
+                startSpeechToText();
+            }
+
+            @Override
+            public void onError(String utteranceId) {
+            }
+        });
     }
     /**
      * Sends a file to Azure Storage
@@ -248,6 +271,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         Context context = getApplicationContext();
         FaceDetector detector = new FaceDetector.Builder(context)
                 .setClassificationType(FaceDetector.ALL_CLASSIFICATIONS)
+                .setLandmarkType(FaceDetector.ALL_LANDMARKS)
                 .build();
 
         detector.setProcessor(
@@ -389,7 +413,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     private Float getHappiness(String photo_url) {
         SentimentalAnalysis sent = new SentimentalAnalysis();
         try {
-            //"https://blindspot.blob.core.windows.net/image/123.jpg"
+            photo_url = "https://blindspot.blob.core.windows.net/image/123.jpg";
             Float result_happiness = sent.post(photo_url);
             System.out.println(result_happiness);
             return result_happiness;
@@ -442,6 +466,34 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         public void onUpdate(FaceDetector.Detections<Face> detectionResults, Face face) {
             mOverlay.add(mFaceGraphic);
             mFaceGraphic.updateFace(face);
+
+            long currentFaceTime = System.currentTimeMillis();
+
+            if(currentFaceTime - lastFaceTime > 3500 &&
+                    (state == State.P_CONFIRMATION || state == State.S_CONFIRMATION)) {
+                lastFaceTime = currentFaceTime;
+
+                float eulerz = face.getEulerZ();
+                if(eulerz > 5) {
+                    updateState("tiltl");
+                    return;
+                } else if (eulerz < -5) {
+                    updateState("tiltr");
+                    return;
+                }
+
+                float width = face.getWidth(),
+                    cameraWidth = mCameraSource.getPreviewSize().getWidth();
+                if(width / cameraWidth > 0.4) {
+                    updateState("close");
+                    return;
+                } else if (width / cameraWidth < 0.35) {
+                    updateState("far");
+                    return;
+                }
+
+                updateState("good");
+            }
         }
 
         /**
@@ -515,21 +567,111 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         ADD_COMMENT,
         REQUEST_TAGS,
         ADD_TAGS,
+        DONE
     }
 
     private State state = State.START;
 
     private void updateState(String response) {
+        String toSpeak;
+
+        if(response.isEmpty()) {
+            toSpeak = "Please say your intention.";
+            mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+        }
+
         switch(state) {
             case START:
-            case S_CONFIRMATION:
-            case P_CONFIRMATION:
-            case REQUEST_COMMENT:
-            case ADD_COMMENT:
-            case REQUEST_TAGS:
-            case ADD_TAGS:
-            default:
+                try {
+                    PostNLU.Intention intention = PostNLU.post(response);
 
+                    if(intention.intent == PostNLU.Intent.TAKE && intention.photoType == PostNLU.PhotoType.SELFIE) {
+                        state = State.S_CONFIRMATION;
+                        toSpeak = "Hold the camera at eye level and arms length away and say okay.";
+                        mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    } else {
+                        toSpeak = "Hold the camera at eye level and say okay.";
+                        mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                        state = State.P_CONFIRMATION;
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    toSpeak = "Error interpreting what you said. Please say it again.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                }
+            case S_CONFIRMATION:
+                if(response.equals("tiltr")) {
+                    toSpeak = "Tilt camera slightly to the left.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("tiltl")) {
+                    toSpeak = "Tilt camera slightly to the right.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("close")) {
+                    toSpeak = "Move camera slightly farther away from yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("far")) {
+                    toSpeak = "Move camera slightly closer towards yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("good")) {
+                    state = State.REQUEST_COMMENT;
+                    toSpeak = "Picture taken. Do you want to add a comment?";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                }
+            case P_CONFIRMATION:
+                if(response.equals("tiltr")) {
+                    toSpeak = "Tilt camera slightly to the right.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("tiltl")) {
+                    toSpeak = "Tilt camera slightly to the left.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("close")) {
+                    toSpeak = "Move camera slightly closer towards yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("far")) {
+                    toSpeak = "Move camera slightly farther away from yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("good")) {
+                    state = State.REQUEST_COMMENT;
+                    toSpeak = "Picture taken. Do you want to add a comment?";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                }
+            case REQUEST_COMMENT:
+                if(response.equalsIgnoreCase("yes")) {
+                    state = State.ADD_COMMENT;
+                    toSpeak = "Record comment now.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equalsIgnoreCase("no")) {
+                    toSpeak = "Storage complete. Goodbye.";
+                    mTTS.setOnUtteranceProgressListener(exitListener);
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else {
+                    toSpeak = "Error interpreting what you said. Please say it again.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                }
+            case ADD_COMMENT:
+                toSpeak = "Storage complete. Goodbye";
+                mTTS.setOnUtteranceProgressListener(exitListener);
+                mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+            case DONE:
+            default:
+                //should not be here
         }
     }
+
+    private UtteranceProgressListener exitListener = new UtteranceProgressListener() {
+        @Override
+        public void onStart(String utteranceId) {
+
+        }
+
+        @Override
+        public void onDone(String utteranceId) {
+            System.exit(0);
+        }
+
+        @Override
+        public void onError(String utteranceId) {
+
+        }
+    };
 }
