@@ -166,7 +166,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             String storageConnectionString =
                         "DefaultEndpointsProtocol=http;" +
                         "AccountName=blindspot;" +
-                        "AccountKey=09f21256-5e75-4b8f-8f8c-ded4665bde79";
+                        "AccountKey=D5xPtr7nFwZNqPzGZ96g29mQBPc4AqCcoVGarrsiWUPiYK9um8fJ3a2eVFHlpXu1Q1NZMdF4yasR+AIiRca7og==";
             // Retrieve storage account from connection-string.
             CloudStorageAccount storageAccount = CloudStorageAccount.parse(storageConnectionString);
 
