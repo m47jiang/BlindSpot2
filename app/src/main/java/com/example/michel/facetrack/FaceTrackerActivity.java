@@ -19,11 +19,14 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
@@ -49,6 +52,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Locale;
 
 /**
@@ -63,11 +67,13 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     private CameraSourcePreview mPreview;
     private GraphicOverlay mGraphicOverlay;
 
+    private Button btnMicrophone;
     TextToSpeech mTTS;
 
     private static final int RC_HANDLE_GMS = 9001;
     // permission request codes need to be < 256
     private static final int RC_HANDLE_CAMERA_PERM = 2;
+    private final int SPEECH_RECOGNITION_CODE = 1;
 
     //==============================================================================================
     // Activity Methods
@@ -140,8 +146,8 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 });
             }
         });
+        startSpeechToText();
     }
-
     /**
      * Handles the requesting of the camera permission.  This includes
      * showing a "Snackbar" message of why the permission is needed then
@@ -204,7 +210,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
         mCameraSource = new CameraSource.Builder(context, detector)
                 .setRequestedPreviewSize(640, 480)
-                .setFacing(CameraSource.CAMERA_FACING_BACK)
+                .setFacing(CameraSource.CAMERA_FACING_FRONT)
                 .setRequestedFps(30.0f)
                 .build();
     }
@@ -380,6 +386,75 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         @Override
         public void onDone() {
             mOverlay.remove(mFaceGraphic);
+        }
+    }
+
+    /**
+     * Start speech to text intent. This opens up Google Speech Recognition API dialog box to listen the speech input.
+     * */
+    private void startSpeechToText() {
+        System.out.println("hello 1");
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                "Speak something...");
+        try {
+            startActivityForResult(intent, SPEECH_RECOGNITION_CODE);
+            System.out.println("hello 2");
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),
+                    "Sorry! Speech recognition is not supported in this device.",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+    /**
+     * Callback for speech recognition activity
+     * */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        System.out.println("hello #");
+        switch (requestCode) {
+            case SPEECH_RECOGNITION_CODE: {
+                if (resultCode == RESULT_OK && null != data) {
+                    ArrayList<String> result = data
+                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    updateState(result.get(0));
+                } else {
+                    updateState("");
+                }
+                break;
+            }
+        }
+    }
+
+    //=====================================================
+
+    private enum State {
+        START, // photo or selfie
+        S_CONFIRMATION, // say ok after initial instruction
+        P_CONFIRMATION,
+        REQUEST_COMMENT,
+        ADD_COMMENT,
+        REQUEST_TAGS,
+        ADD_TAGS,
+    }
+
+    private State state = State.START;
+
+    private void updateState(String response) {
+        switch(state) {
+            case START:
+            case S_CONFIRMATION:
+            case P_CONFIRMATION:
+            case REQUEST_COMMENT:
+            case ADD_COMMENT:
+            case REQUEST_TAGS:
+            case ADD_TAGS:
+            default:
+
         }
     }
 }
