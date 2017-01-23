@@ -23,6 +23,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SyncStatusObserver;
 import android.content.pm.PackageManager;
 import android.graphics.PointF;
 import android.os.Bundle;
@@ -88,7 +89,10 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     public static boolean flag_azure_done = false;
     public static boolean flag_comm_azure_and_api = false;
 
+    public static boolean oksaid = false;
+
     public long lastFaceTime;
+    public static boolean sixSecondFlag = false;
 
     //==============================================================================================
     // Activity Methods
@@ -119,7 +123,18 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             public void onInit(int status) {
                 if(status != TextToSpeech.ERROR) {
                     mTTS.setLanguage(Locale.CANADA);
+//                    mTTS.setOnUtteranceCompletedListener(new TextToSpeech.OnUtteranceCompletedListener() {
+//                        @Override
+//                        public void onUtteranceCompleted(String utteranceId) {
+//                            startSpeechToText();
+//                        }
+//                    });
+                    String toSpeak = "Blind spot opened. What do you want?";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(8000);
+
                 }
+
             }
         });
 
@@ -170,23 +185,26 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
         lastFaceTime = System.currentTimeMillis();
 
-        String toSpeak = "Blind spot opened.";
-        mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
-        mTTS.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override
-            public void onStart(String utteranceId) {
-            }
 
-            @Override
-            public void onDone(String utteranceId) {
-                startSpeechToText();
-            }
 
-            @Override
-            public void onError(String utteranceId) {
-            }
-        });
     }
+
+
+    public void waitStartSTT(final int millis) {
+        Thread thread = new Thread() {
+            @Override
+            public void run() {
+                try {
+                    sleep(millis);
+                    startSpeechToText();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        };
+        thread.start();
+    }
+
     /**
      * Sends a file to Azure Storage
      */
@@ -552,7 +570,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
      * Start speech to text intent. This opens up Google Speech Recognition API dialog box to listen the speech input.
      * */
     private void startSpeechToText() {
-        System.out.println("hello 1");
+        Log.e("start speech to text", " start speech to text");
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
@@ -593,6 +611,8 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
     private enum State {
         START, // photo or selfie
+        SOK,
+        POK,
         S_CONFIRMATION, // say ok after initial instruction
         P_CONFIRMATION,
         REQUEST_COMMENT,
@@ -610,6 +630,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         if(response.isEmpty()) {
             toSpeak = "Please say your intention.";
             mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+            waitStartSTT(4000);
         }
 
         switch(state) {
@@ -619,18 +640,52 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
                     if(intention.intent == PostNLU.Intent.TAKE && intention.photoType == PostNLU.PhotoType.SELFIE) {
                         state = State.S_CONFIRMATION;
-                        toSpeak = "Hold the camera at eye level and arms length away and say okay.";
+                        toSpeak = "Hold the camera at eye level and arms length away.";
                         mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                        Thread thread = new Thread() {
+                            @Override
+                            public void run() {
+                                try {
+                                    sleep(5000);
+                                    sixSecondFlag = true;
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        };
+                        thread.start();
+                        while(sixSecondFlag != true) {
+
+                        }
+                        sixSecondFlag = false;
                     } else {
-                        toSpeak = "Hold the camera at eye level and say okay.";
+                        toSpeak = "Hold the camera at eye level.";
                         mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
                         state = State.P_CONFIRMATION;
+                        Thread thread = new Thread() {
+                            @Override
+                            public void run() {
+                                try {
+                                    sleep(4000);
+                                    sixSecondFlag = true;
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        };
+                        thread.start();
+                        while(sixSecondFlag != true) {
+
+                        }
+                        sixSecondFlag = false;
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
                     toSpeak = "Error interpreting what you said. Please say it again.";
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
                 }
+                break;
             case S_CONFIRMATION:
                 if(response.equals("tiltr")) {
                     toSpeak = "Tilt camera slightly to the left.";
@@ -684,7 +739,9 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                     });
                     toSpeak = "Picture taken. Do you want to add a comment?";
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
                 }
+                break;
             case P_CONFIRMATION:
                 if(response.equals("tiltr")) {
                     toSpeak = "Tilt camera slightly to the right.";
@@ -738,12 +795,15 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                         }
                     });
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
                 }
+                break;
             case REQUEST_COMMENT:
                 if(response.equalsIgnoreCase("yes")) {
                     state = State.ADD_COMMENT;
                     toSpeak = "Record comment now.";
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(2000);
                 } else if (response.equalsIgnoreCase("no")) {
                     toSpeak = "Storage complete. Goodbye.";
                     mTTS.setOnUtteranceProgressListener(exitListener);
@@ -751,12 +811,32 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 } else {
                     toSpeak = "Error interpreting what you said. Please say it again.";
                     mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
                 }
+                break;
             case ADD_COMMENT:
                 toSpeak = "Storage complete. Goodbye";
                 mTTS.setOnUtteranceProgressListener(exitListener);
                 mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                Thread thread = new Thread() {
+                    @Override
+                    public void run() {
+                        try {
+                            sleep(2000);
+                            sixSecondFlag = true;
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                };
+                thread.start();
+                while(sixSecondFlag != true) {
+
+                }
+                System.exit(0);
+                break;
             case DONE:
+                break;
             default:
                 //should not be here
         }
