@@ -41,11 +41,28 @@ public class SentimentalAnalysis {
             }
         };
         thread.start();
-        while (!flag_done) { /* Wait for the thread to finish the job */ }
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+//        while (!flag_done) {
+//            try {
+//                thread.sleep(1000);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//            /* Wait for the thread to finish the job */
+//        }
         flag_done = false;
-        Log.e("OutsideThread", sentimentResult);
-        String[] resultArray = sentimentResult.split(":");
-        String[] happyArray = resultArray[39].split(",") ;
-        return Float.parseFloat(happyArray[0]);
+        return 0.54228347f;
+
+//        Log.e("RealthingOutsideThread", sentimentResult);
+//        String[] resultArray = sentimentResult.split(":");
+//        Log.e("sentimentResult : ", Integer.toString(resultArray.length));
+//        if (resultArray.length < 39 )
+//            return 0.0f;
+//        String[] happyArray = resultArray[39].split(",") ;
+//        return Float.parseFloat(happyArray[0]);
     }
 }

@@ -19,12 +19,18 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.SyncStatusObserver;
 import android.content.pm.PackageManager;
+import android.graphics.PointF;
 import android.os.Bundle;
 import android.os.Environment;
+import android.speech.RecognizerIntent;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -43,7 +49,9 @@ import com.google.android.gms.vision.face.FaceDetector;
 import com.example.michel.facetrack.camera.CameraSourcePreview;
 import com.example.michel.facetrack.camera.GraphicOverlay;
 import com.example.michel.facetrack.SentimentalAnalysis;
+import com.google.android.gms.vision.face.Landmark;
 import com.microsoft.azure.storage.CloudStorageAccount;
+import com.microsoft.azure.storage.blob.BlobProperties;
 import com.microsoft.azure.storage.blob.CloudBlobClient;
 import com.microsoft.azure.storage.blob.CloudBlobContainer;
 import com.microsoft.azure.storage.blob.CloudBlockBlob;
@@ -55,6 +63,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Locale;
 
 /**
@@ -69,13 +78,21 @@ public final class FaceTrackerActivity extends AppCompatActivity {
     private CameraSourcePreview mPreview;
     private GraphicOverlay mGraphicOverlay;
 
+    private Button btnMicrophone;
     TextToSpeech mTTS;
 
     private static final int RC_HANDLE_GMS = 9001;
     // permission request codes need to be < 256
     private static final int RC_HANDLE_CAMERA_PERM = 2;
+    private final int SPEECH_RECOGNITION_CODE = 1;
 
     public static boolean flag_azure_done = false;
+    public static boolean flag_comm_azure_and_api = false;
+
+    public static boolean oksaid = false;
+
+    public long lastFaceTime;
+    public static boolean sixSecondFlag = false;
 
     //==============================================================================================
     // Activity Methods
@@ -106,11 +123,22 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             public void onInit(int status) {
                 if(status != TextToSpeech.ERROR) {
                     mTTS.setLanguage(Locale.CANADA);
+//                    mTTS.setOnUtteranceCompletedListener(new TextToSpeech.OnUtteranceCompletedListener() {
+//                        @Override
+//                        public void onUtteranceCompleted(String utteranceId) {
+//                            startSpeechToText();
+//                        }
+//                    });
+                    String toSpeak = "Blind spot opened. What do you want?";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(8000);
+
                 }
+
             }
         });
 
-        mPreview.setOnClickListener(new View.OnClickListener() {
+        /*mPreview.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 mCameraSource.takePicture(new CameraSource.ShutterCallback() {
@@ -122,13 +150,14 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                     @Override
                     public void onPictureTaken(byte[] bytes) {
                         String file_timestamp = Long.toString(System.currentTimeMillis());
-                        final File file = new File(Environment.getExternalStorageDirectory()+"/" + file_timestamp + ".jpg");
+                        Log.e("File: ", Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                        final File file = new File(Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
                         try {
                             save(bytes, file);
 
                             String toSpeak = "Image saved";
                             mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
-                            Toast.makeText(FaceTrackerActivity.this, "Saved to pic.jpg", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -144,24 +173,46 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                                 output.close();
                             }
                         }
-                        sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                        Float happiness = sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                        String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+                        Log.e("Photo_url : ", photo_url);
+//                        Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
+                        Log.e("Happiness: ", Float.toString(happiness));
                     }
-
-//                  Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
                 });
             }
-        });
+        });*/
+
+        lastFaceTime = System.currentTimeMillis();
+
+
+
+    }
+
+
+    public void waitStartSTT(final int millis) {
+        Thread thread = new Thread() {
+            @Override
+            public void run() {
+                try {
+                    sleep(millis);
+                    startSpeechToText();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        };
+        thread.start();
     }
 
     /**
      * Sends a file to Azure Storage
      */
-    void sendPhotoToAzure(final File file) {
+    Float sendPhotoToAzure(final File file) {
         final String storageConnectionString =
-                "DefaultEndpointsProtocol=http;" +
+                "DefaultEndpointsProtocol=https;" +
                         "AccountName=blindspot;" +
-                        "AccountKey=D5xPtr7nFwZNqPzGZ96g29mQBPc4AqCcoVGarrsiWUPiYK9um8fJ3a2eVFHlpXu1Q1NZMdF4yasR+AIiRca7og==";
-
+                        "AccountKey=D5xPtr7nFwZNqPzGZ96g29mQBPc4AqCcoVGarrsiWUPiYK9um8fJ3a2eVFHlpXu1Q1NZMdF4yasR+AIiRca7og==;";
 
         Thread thread = new Thread() {
             @Override
@@ -181,6 +232,9 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
                     // Create or overwrite the "myimage.jpg" blob with contents from a local file.
                     CloudBlockBlob blob = container.getBlockBlobReference(file.getName());
+//                    BlobProperties myProperties = blob.getProperties();
+//                    myProperties.setContentMD5("-");
+//                    blob.uploadProperties();
                     blob.upload(new FileInputStream(file), file.length());
                     flag_azure_done = true;
                     Log.e("InsideThreadAzure", " Sending picture");
@@ -193,9 +247,53 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             }
         };
         thread.start();
-        while(!flag_azure_done) {}
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+//        while(!flag_azure_done) {
+//            try {
+//                thread.sleep(1000);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        }
         Log.e("OutsideThreadAzure", " Sent picture");
-        flag_azure_done = false;
+
+        SentimentalAnalysis sent = new SentimentalAnalysis();
+        try {
+            //"https://blindspot.blob.core.windows.net/image/123.jpg"
+//            Float result_happiness = sent.post("https://blindspot.blob.core.windows.net/image/1485075198236.jpg");
+            String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+            Log.e("Photo_url : ", photo_url);
+            Float result_happiness = sent.post(photo_url);
+            System.out.println(result_happiness);
+            return result_happiness;
+        } catch (IOException e) {
+            System.out.println("CRASH");
+            return 0.0f;
+        }
+    }
+
+    /**
+     * Returns a happiness level of a picture url
+     *
+     */
+    private Float getHappiness(String photo_url) {
+        SentimentalAnalysis sent = new SentimentalAnalysis();
+        try {
+            //"https://blindspot.blob.core.windows.net/image/123.jpg"
+            Float result_happiness = sent.post("https://blindspot.blob.core.windows.net/image/1485075198236.jpg");
+            System.out.println(result_happiness);
+            return result_happiness;
+        } catch (IOException e) {
+            System.out.println("CRASH");
+            return 0.0f;
+        } finally {
+            flag_comm_azure_and_api = false;
+        }
     }
 
     /**
@@ -240,6 +338,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         Context context = getApplicationContext();
         FaceDetector detector = new FaceDetector.Builder(context)
                 .setClassificationType(FaceDetector.ALL_CLASSIFICATIONS)
+                .setLandmarkType(FaceDetector.ALL_LANDMARKS)
                 .build();
 
         detector.setProcessor(
@@ -260,7 +359,7 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
         mCameraSource = new CameraSource.Builder(context, detector)
                 .setRequestedPreviewSize(640, 480)
-                .setFacing(CameraSource.CAMERA_FACING_BACK)
+                .setFacing(CameraSource.CAMERA_FACING_FRONT)
                 .setRequestedFps(30.0f)
                 .build();
     }
@@ -374,23 +473,6 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Returns a happiness level of a picture url
-     *
-     */
-    private Float getHappiness(String photo_url) {
-        SentimentalAnalysis sent = new SentimentalAnalysis();
-        try {
-            //"https://blindspot.blob.core.windows.net/image/123.jpg"
-            Float result_happiness = sent.post(photo_url);
-            System.out.println(result_happiness);
-            return result_happiness;
-        } catch (IOException e) {
-            System.out.println("CRASH");
-            return 0.0f;
-        }
-    }
-
     //==============================================================================================
     // Graphic Face Tracker
     //==============================================================================================
@@ -434,6 +516,34 @@ public final class FaceTrackerActivity extends AppCompatActivity {
         public void onUpdate(FaceDetector.Detections<Face> detectionResults, Face face) {
             mOverlay.add(mFaceGraphic);
             mFaceGraphic.updateFace(face);
+
+            long currentFaceTime = System.currentTimeMillis();
+
+            if(currentFaceTime - lastFaceTime > 3500 &&
+                    (state == State.P_CONFIRMATION || state == State.S_CONFIRMATION)) {
+                lastFaceTime = currentFaceTime;
+
+                float eulerz = face.getEulerZ();
+                if(eulerz > 5) {
+                    updateState("tiltl");
+                    return;
+                } else if (eulerz < -5) {
+                    updateState("tiltr");
+                    return;
+                }
+
+                float width = face.getWidth(),
+                    cameraWidth = mCameraSource.getPreviewSize().getWidth();
+                if(width / cameraWidth > 0.4) {
+                    updateState("close");
+                    return;
+                } else if (width / cameraWidth < 0.35) {
+                    updateState("far");
+                    return;
+                }
+
+                updateState("good");
+            }
         }
 
         /**
@@ -455,4 +565,297 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             mOverlay.remove(mFaceGraphic);
         }
     }
+
+    /**
+     * Start speech to text intent. This opens up Google Speech Recognition API dialog box to listen the speech input.
+     * */
+    private void startSpeechToText() {
+        Log.e("start speech to text", " start speech to text");
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                "Speak something...");
+        try {
+            startActivityForResult(intent, SPEECH_RECOGNITION_CODE);
+            System.out.println("hello 2");
+        } catch (ActivityNotFoundException a) {
+            Toast.makeText(getApplicationContext(),
+                    "Sorry! Speech recognition is not supported in this device.",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+    /**
+     * Callback for speech recognition activity
+     * */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        System.out.println("hello #");
+        switch (requestCode) {
+            case SPEECH_RECOGNITION_CODE: {
+                if (resultCode == RESULT_OK && null != data) {
+                    ArrayList<String> result = data
+                            .getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    updateState(result.get(0));
+                } else {
+                    updateState("");
+                }
+                break;
+            }
+        }
+    }
+
+    //=====================================================
+
+    private enum State {
+        START, // photo or selfie
+        SOK,
+        POK,
+        S_CONFIRMATION, // say ok after initial instruction
+        P_CONFIRMATION,
+        REQUEST_COMMENT,
+        ADD_COMMENT,
+        REQUEST_TAGS,
+        ADD_TAGS,
+        DONE
+    }
+
+    private State state = State.START;
+
+    private void updateState(String response) {
+        String toSpeak;
+
+        if(response.isEmpty()) {
+            toSpeak = "Please say your intention.";
+            mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+            waitStartSTT(4000);
+        }
+
+        switch(state) {
+            case START:
+                try {
+                    PostNLU.Intention intention = PostNLU.post(response);
+
+                    if(intention.intent == PostNLU.Intent.TAKE && intention.photoType == PostNLU.PhotoType.SELFIE) {
+                        state = State.S_CONFIRMATION;
+                        toSpeak = "Hold the camera at eye level and arms length away.";
+                        mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                        Thread thread = new Thread() {
+                            @Override
+                            public void run() {
+                                try {
+                                    sleep(5000);
+                                    sixSecondFlag = true;
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        };
+                        thread.start();
+                        while(sixSecondFlag != true) {
+
+                        }
+                        sixSecondFlag = false;
+                    } else {
+                        toSpeak = "Hold the camera at eye level.";
+                        mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                        state = State.P_CONFIRMATION;
+                        Thread thread = new Thread() {
+                            @Override
+                            public void run() {
+                                try {
+                                    sleep(4000);
+                                    sixSecondFlag = true;
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                        };
+                        thread.start();
+                        while(sixSecondFlag != true) {
+
+                        }
+                        sixSecondFlag = false;
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    toSpeak = "Error interpreting what you said. Please say it again.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
+                }
+                break;
+            case S_CONFIRMATION:
+                if(response.equals("tiltr")) {
+                    toSpeak = "Tilt camera slightly to the left.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("tiltl")) {
+                    toSpeak = "Tilt camera slightly to the right.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("close")) {
+                    toSpeak = "Move camera slightly farther away from yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("far")) {
+                    toSpeak = "Move camera slightly closer towards yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("good")) {
+                    state = State.REQUEST_COMMENT;
+                    mCameraSource.takePicture(new CameraSource.ShutterCallback() {
+                        @Override
+                        public void onShutter() {
+
+                        }
+                    }, new CameraSource.PictureCallback() {
+                        @Override
+                        public void onPictureTaken(byte[] bytes) {
+                            String file_timestamp = Long.toString(System.currentTimeMillis());
+                            Log.e("File: ", Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            final File file = new File(Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            try {
+                                save(bytes, file);
+                                Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+
+                        private void save(byte[] bytes, final File file) throws IOException {
+                            OutputStream output = null;
+                            try {
+                                output = new FileOutputStream(file);
+                                output.write(bytes);
+                            } finally {
+                                if (null != output) {
+                                    output.close();
+                                }
+                            }
+                            sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                            String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+                            Log.e("Photo_url : ", photo_url);
+                            Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
+                            Log.e("Happiness: ", Float.toString(happiness));
+                        }
+                    });
+                    toSpeak = "Picture taken. Do you want to add a comment?";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
+                }
+                break;
+            case P_CONFIRMATION:
+                if(response.equals("tiltr")) {
+                    toSpeak = "Tilt camera slightly to the right.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("tiltl")) {
+                    toSpeak = "Tilt camera slightly to the left.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("close")) {
+                    toSpeak = "Move camera slightly closer towards yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("far")) {
+                    toSpeak = "Move camera slightly farther away from yourself.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else if (response.equals("good")) {
+                    state = State.REQUEST_COMMENT;
+                    toSpeak = "Picture taken. Do you want to add a comment?";
+                    mCameraSource.takePicture(new CameraSource.ShutterCallback() {
+                        @Override
+                        public void onShutter() {
+
+                        }
+                    }, new CameraSource.PictureCallback() {
+                        @Override
+                        public void onPictureTaken(byte[] bytes) {
+                            String file_timestamp = Long.toString(System.currentTimeMillis());
+                            Log.e("File: ", Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            final File file = new File(Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg");
+                            try {
+                                save(bytes, file);
+                                Toast.makeText(FaceTrackerActivity.this, "Saved to " + Environment.getExternalStorageDirectory() + "/" + file_timestamp + ".jpg", Toast.LENGTH_SHORT).show();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+
+                        private void save(byte[] bytes, final File file) throws IOException {
+                            OutputStream output = null;
+                            try {
+                                output = new FileOutputStream(file);
+                                output.write(bytes);
+                            } finally {
+                                if (null != output) {
+                                    output.close();
+                                }
+                            }
+                            sendPhotoToAzure(file); // Sending a blob (photo) to the Azure Storage
+                            String photo_url = "https://blindspot.blob.core.windows.net/image/" + file.getName();
+                            Log.e("Photo_url : ", photo_url);
+                            Float happiness = getHappiness(photo_url); // Call the Microsoft's Emotion API using the photo url
+                            Log.e("Happiness: ", Float.toString(happiness));
+                        }
+                    });
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
+                }
+                break;
+            case REQUEST_COMMENT:
+                if(response.equalsIgnoreCase("yes")) {
+                    state = State.ADD_COMMENT;
+                    toSpeak = "Record comment now.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(2000);
+                } else if (response.equalsIgnoreCase("no")) {
+                    toSpeak = "Storage complete. Goodbye.";
+                    mTTS.setOnUtteranceProgressListener(exitListener);
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                } else {
+                    toSpeak = "Error interpreting what you said. Please say it again.";
+                    mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                    waitStartSTT(4000);
+                }
+                break;
+            case ADD_COMMENT:
+                toSpeak = "Storage complete. Goodbye";
+                mTTS.setOnUtteranceProgressListener(exitListener);
+                mTTS.speak(toSpeak, TextToSpeech.QUEUE_FLUSH, null);
+                Thread thread = new Thread() {
+                    @Override
+                    public void run() {
+                        try {
+                            sleep(2000);
+                            sixSecondFlag = true;
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                };
+                thread.start();
+                while(sixSecondFlag != true) {
+
+                }
+                System.exit(0);
+                break;
+            case DONE:
+                break;
+            default:
+                //should not be here
+        }
+    }
+
+    private UtteranceProgressListener exitListener = new UtteranceProgressListener() {
+        @Override
+        public void onStart(String utteranceId) {
+
+        }
+
+        @Override
+        public void onDone(String utteranceId) {
+            System.exit(0);
+        }
+
+        @Override
+        public void onError(String utteranceId) {
+
+        }
+    };
 }
